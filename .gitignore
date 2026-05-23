@@ -1,0 +1,29 @@
+# Build outputs / temp
+dist/
+dist_merged/
+build_tmp/
+build_tmp_merged/
+__pycache__/
+*.pyc
+*.pyo
+
+# Large binaries that exceed GitHub's 100 MB per-file limit.
+# - ffmpeg.exe (Windows): ~200 MB. Local-only; Win build script picks it up.
+# - ffmpeg (macOS): downloaded by the CI workflow at build time.
+ffmpeg.exe
+ffmpeg
+ffmpeg_bin/
+
+# Generated during macOS build
+icon.iconset/
+icon.icns
+
+# Claude Code / IDE state
+.claude/
+.idea/
+.vscode/
+
+# OS junk
+.DS_Store
+Thumbs.db
+*~
