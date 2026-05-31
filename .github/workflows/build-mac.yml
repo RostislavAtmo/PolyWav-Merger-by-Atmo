@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write           # needed if you want to attach artifacts to a Release
 
+# Opt JS-based actions into Node.js 24 immediately (silences the Node 20
+# deprecation warning GitHub started showing in early 2026).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     name: Build .app + .dmg

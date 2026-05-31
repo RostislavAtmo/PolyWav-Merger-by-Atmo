@@ -26,14 +26,16 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QComboBox, QTextEdit, QFileDialog,
     QFrame, QScrollArea, QSizePolicy, QProgressBar, QDialog,
-    QTableWidget, QTableWidgetItem, QHeaderView, QGraphicsDropShadowEffect
+    QTableWidget, QTableWidgetItem, QHeaderView, QGraphicsDropShadowEffect,
+    QCheckBox, QMenu
 )
 from PySide6.QtCore import (
     Qt, QSize, Signal, QThread, QObject, QTimer, QRect, QRectF, QPoint
 )
 from PySide6.QtGui import (
     QFont, QColor, QPainter, QPainterPath,
-    QBrush, QPen, QLinearGradient, QIcon, QPixmap, QImage, QPalette
+    QBrush, QPen, QLinearGradient, QIcon, QPixmap, QImage, QPalette,
+    QKeySequence, QShortcut
 )
 
 # ── Hide console on Windows ───────────────────────────────────────
@@ -1118,15 +1120,19 @@ def _process_tx_file_for_offset(tx_info):
 # ══════════════════════════════════════════════════════════════════
 
 def process_files(r_dir, tx_dir, o_dir, normalize, tx_only, tx_profile,
-                  log_q, progress_q, stop_event, align_map=None):
+                  log_q, progress_q, stop_event, align_map=None,
+                  filter_by_channel=False, always_include=None):
     def log(msg, tag="normal"): log_q.put((msg, tag))
     def prog(cur, total, name): progress_q.put((cur, total, name))
+
+    always_include = always_include or set()
 
     r_files  = sorted([f for f in os.listdir(r_dir)  if f.lower().endswith(".wav")])
     tx_files = sorted([f for f in os.listdir(tx_dir) if f.lower().endswith(".wav")])
     norm_s   = "ON" if normalize else "OFF"
-    align_s = "ON" if align_map else "OFF"
-    log(f"Recorder: {len(r_files)} files  |  TX: {len(tx_files)} files  |  Normalize: {norm_s}  |  Clock offset correction: {align_s}  |  Profile: {tx_profile}", "dim")
+    align_s  = "ON" if align_map else "OFF"
+    filter_s = "ON" if filter_by_channel else "OFF"
+    log(f"Recorder: {len(r_files)} files  |  TX: {len(tx_files)} files  |  Normalize: {norm_s}  |  Clock offset correction: {align_s}  |  Channel filter: {filter_s}  |  Profile: {tx_profile}", "dim")
     log("─"*60, "dim")
 
     # ── Cache TX metadata ─────────────────────────────────────────
@@ -1193,14 +1199,35 @@ def process_files(r_dir, tx_dir, o_dir, normalize, tx_only, tx_profile,
         if not tx_only: log(f"    Recorder: {' | '.join(r_tnames)}", "dim")
 
         hits = []
-        
+
         # Prepare TX files for parallel processing
         tx_to_process = []
         for tp, dc in tx_cache.items():
             if not (r_start >= dc["start"] and r_end <= dc["end"]): continue
             tn_base = os.path.basename(tp)
+            base_no_ext = os.path.splitext(tn_base)[0]
             off = r_start - dc["start"]
-            
+
+            # ── Channel-presence filter ───────────────────────────────
+            # The TX is pulled in only if its target recorder channel is
+            # actually present in THIS take's track list. Override via the
+            # mapping dialog's "Always include" checkbox (for autonomous
+            # plant mics on channels not physically on the recorder).
+            if filter_by_channel:
+                is_override = tn_base in always_include or base_no_ext in always_include
+                if not is_override:
+                    # Determine the TX's target channel:
+                    #   1. Explicit mapping from the dialog (most reliable)
+                    #   2. Auto-guess against this take's track names
+                    target_name = (align_map.get(tn_base) or align_map.get(base_no_ext)) if align_map else None
+                    if not target_name:
+                        target_name = guess_tx_channel_name(tn_base, "", r_tnames)
+                    if target_name:
+                        if _resolve_channel_index(target_name, r_tnames) is None:
+                            log(f"    SKIP {tn_base}: '{target_name}' not recorded in this take", "dim")
+                            continue
+                    # else: couldn't determine target channel → include (lenient default)
+
             tx_to_process.append({
                 "tp": tp,
                 "dc": dc,
@@ -1394,17 +1421,19 @@ class SignalQueue:
 
 class ProcessWorker(QThread):
     def __init__(self, r_dir, tx_dir, o_dir, normalize, tx_only, tx_profile,
-                 align_map=None):
+                 align_map=None, filter_by_channel=False, always_include=None):
         super().__init__()
-        self.r_dir      = r_dir
-        self.tx_dir     = tx_dir
-        self.o_dir      = o_dir
-        self.normalize  = normalize
-        self.tx_only    = tx_only
-        self.tx_profile = tx_profile
-        self.align_map  = align_map or {}
-        self.signals    = WorkerSignals()
-        self._stop      = threading.Event()
+        self.r_dir             = r_dir
+        self.tx_dir            = tx_dir
+        self.o_dir             = o_dir
+        self.normalize         = normalize
+        self.tx_only           = tx_only
+        self.tx_profile        = tx_profile
+        self.align_map         = align_map or {}
+        self.filter_by_channel = filter_by_channel
+        self.always_include    = always_include or set()
+        self.signals           = WorkerSignals()
+        self._stop             = threading.Event()
 
     def stop(self):
         self._stop.set()
@@ -1417,7 +1446,9 @@ class ProcessWorker(QThread):
                 SignalQueue(self.signals.log),
                 SignalQueue(self.signals.progress),
                 self._stop,
-                self.align_map
+                self.align_map,
+                self.filter_by_channel,
+                self.always_include,
             )
         except Exception:
             self.signals.log.emit("ERROR: unexpected processing failure", "err")
@@ -1529,19 +1560,14 @@ class NeumorphicCard(QFrame):
 
 class SquircleFolderIcon(QWidget):
     """
-    iOS-style 36×36 squircle button with a folder glyph and a soft, neutral
-    drop shadow via QGraphicsDropShadowEffect.
-
-    Keeping this as a separate QWidget (instead of inline custom paint inside
-    FolderSelector) is what gives us a proper Gaussian-blurred shadow — the
-    effect runs once over the widget's rendered pixmap, so there's no manual
-    layering and no banding at the edges.
+    Flat 36×36 squircle with a folder glyph — styled to sit alongside the
+    toggle switches: matte dark fill, 1-px border, muted glyph color, no
+    gradient, no gloss. A whisper of drop shadow keeps it from looking glued
+    to the surrounding card.
     """
 
-    SIZE        = 36
-    RADIUS      = 10            # ~28 % of size → iOS-squircle proportion
-    SHADOW_BLUR = 16
-    SHADOW_DY   = 3             # subtle downward offset
+    SIZE   = 36
+    RADIUS = 10            # ~28 % of size → iOS-squircle proportion
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1549,10 +1575,12 @@ class SquircleFolderIcon(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground, True)
         self._hovered = False
 
+        # Very subtle drop shadow — just enough to suggest 1 px of elevation
+        # without the iOS chiclet feel.
         shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(self.SHADOW_BLUR)
-        shadow.setColor(QColor(0, 0, 0, 150))   # neutral dark, semi-transparent
-        shadow.setOffset(0, self.SHADOW_DY)
+        shadow.setBlurRadius(8)
+        shadow.setColor(QColor(0, 0, 0, 90))
+        shadow.setOffset(0, 1)
         self.setGraphicsEffect(shadow)
 
     def setHovered(self, hovered: bool):
@@ -1567,36 +1595,27 @@ class SquircleFolderIcon(QWidget):
         path = QPainterPath()
         path.addRoundedRect(rect, self.RADIUS, self.RADIUS)
 
-        # 1. Squircle gradient — neutral grays from the app palette
-        # top-left lighter ("highlight"-ish) → bottom-right darker ("card")
-        grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        if self._hovered:
-            grad.setColorAt(0.0, QColor("#5a5a64"))
-            grad.setColorAt(1.0, QColor("#3a3a40"))
-        else:
-            grad.setColorAt(0.0, QColor("#4a4a52"))
-            grad.setColorAt(1.0, QColor("#2a2a2e"))
-        painter.fillPath(path, QBrush(grad))
+        # 1. Flat fill — slightly lighter than the surrounding card_inset
+        #    so the squircle reads as raised, but matte
+        fill = QColor(COLORS["card_light"] if self._hovered else COLORS["card"])
+        painter.fillPath(path, fill)
 
-        # 2. Top gloss highlight
-        gloss = QLinearGradient(0, 0, 0, 14)
-        gloss.setColorAt(0.0, QColor(255, 255, 255, 50))
-        gloss.setColorAt(1.0, QColor(255, 255, 255, 0))
-        painter.fillPath(path, gloss)
-
-        # 3. Subtle 1px inner border for crisp edge against the gradient
-        painter.setPen(QPen(QColor(255, 255, 255, 25), 1))
+        # 2. 1-px border in the same border color the rest of the UI uses
+        border_color = COLORS["highlight"] if self._hovered else COLORS["border"]
+        painter.setPen(QPen(QColor(border_color), 1))
         painter.setBrush(Qt.NoBrush)
         painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5),
                                 self.RADIUS - 0.5, self.RADIUS - 0.5)
 
-        # 4. White folder glyph
-        white = QColor(255, 255, 255, 245)
+        # 3. Folder glyph in the muted-grey "text_secondary" colour the
+        #    toggle thumb uses when off — same visual weight as the rest
+        #    of the iconography
+        glyph = QColor(COLORS["text"] if self._hovered else COLORS["text_secondary"])
         ix, iy = 7, 12
         body = QPainterPath()
         body.addRoundedRect(ix, iy + 3, 22, 13, 2.5, 2.5)
         painter.setPen(Qt.NoPen)
-        painter.setBrush(white)
+        painter.setBrush(glyph)
         painter.drawPath(body)
         tab = QPainterPath()
         tab.moveTo(ix, iy + 3)
@@ -1623,6 +1642,10 @@ class FolderSelector(QWidget):
         # squircle without getting clipped at top/bottom of the selector card.
         self.setFixedHeight(62)
         self.setAttribute(Qt.WA_TranslucentBackground, True)
+        # Take focus on tab/click so Ctrl+V can be received as a keypress.
+        self.setFocusPolicy(Qt.StrongFocus)
+        # Show our own right-click menu instead of the default (none).
+        self.setContextMenuPolicy(Qt.DefaultContextMenu)
 
         self._icon = SquircleFolderIcon(self)
         self._icon.move(self._ICON_LEFT_MARGIN,
@@ -1675,11 +1698,101 @@ class FolderSelector(QWidget):
         self.update()
 
     def mousePressEvent(self, event):
+        if event.button() == Qt.RightButton:
+            # Let contextMenuEvent handle it
+            super().mousePressEvent(event)
+            return
+        # Left/middle click → folder picker
+        self.setFocus(Qt.MouseFocusReason)
         folder = select_directory_with_files(self, self._label, self._path)
         if folder:
-            self._path = folder
-            self.pathChanged.emit(folder)
+            self._set_path_if_valid(folder)
+
+    def contextMenuEvent(self, event):
+        """Right-click → Paste path from clipboard."""
+        menu = QMenu(self)
+        menu.setStyleSheet(f"""
+            QMenu {{
+                background-color: {COLORS['card']};
+                color: {COLORS['text']};
+                border: 1px solid {COLORS['border']};
+                border-radius: 8px;
+                padding: 4px;
+            }}
+            QMenu::item {{
+                padding: 6px 16px;
+                border-radius: 5px;
+            }}
+            QMenu::item:selected {{
+                background-color: {COLORS['highlight']};
+            }}
+            QMenu::separator {{
+                height: 1px;
+                background: {COLORS['border']};
+                margin: 4px 6px;
+            }}
+        """)
+        paste_action = menu.addAction("Paste path")
+        paste_action.setShortcut(QKeySequence.Paste)
+        paste_action.triggered.connect(self._paste_from_clipboard)
+        if self._path:
+            menu.addSeparator()
+            copy_action = menu.addAction("Copy current path")
+            copy_action.setShortcut(QKeySequence.Copy)
+            copy_action.triggered.connect(self._copy_to_clipboard)
+            clear_action = menu.addAction("Clear")
+            clear_action.triggered.connect(self._clear_path)
+        menu.exec(event.globalPos())
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.Paste):
+            self._paste_from_clipboard()
+            event.accept()
+        elif event.matches(QKeySequence.Copy):
+            self._copy_to_clipboard()
+            event.accept()
+        else:
+            super().keyPressEvent(event)
+
+    def _paste_from_clipboard(self):
+        text = (QApplication.clipboard().text() or "").strip()
+        # Strip surrounding quotes (Windows Explorer / shell typically wrap
+        # paths with spaces in double quotes on copy).
+        if len(text) >= 2 and text[0] == text[-1] and text[0] in ('"', "'"):
+            text = text[1:-1]
+        # Normalize separators (Windows users sometimes paste forward-slash paths).
+        text = text.strip()
+        if not text:
+            return
+        self._set_path_if_valid(text)
+
+    def _copy_to_clipboard(self):
+        if self._path:
+            QApplication.clipboard().setText(self._path)
+
+    def _clear_path(self):
+        if self._path:
+            self._path = ""
+            self.pathChanged.emit("")
             self.update()
+
+    def _set_path_if_valid(self, candidate):
+        """Accept the candidate if it's a folder; if it's a file, use its parent."""
+        if not candidate:
+            return False
+        if os.path.isdir(candidate):
+            self._path = candidate
+            self.pathChanged.emit(candidate)
+            self.update()
+            return True
+        if os.path.isfile(candidate):
+            parent = os.path.dirname(candidate)
+            if parent and os.path.isdir(parent):
+                self._path = parent
+                self.pathChanged.emit(parent)
+                self.update()
+                return True
+        return False
 
     def path(self): return self._path
     def setPath(self, p): self._path=p; self.update()
@@ -2149,6 +2262,14 @@ def guess_reference_channel(tx_file, tx_track_name, channel_labels):
 
     return best_idx if best_score >= 4 else 0
 
+def guess_tx_channel_name(tx_file, tx_track_name, channel_labels):
+    """Return the channel NAME (not index) that best matches `tx_file`,
+    or None if no plausible match (score < threshold)."""
+    idx = guess_reference_channel(tx_file, tx_track_name, channel_labels)
+    if idx and 1 <= idx <= len(channel_labels):
+        return channel_labels[idx - 1]
+    return None
+
 class ChannelMappingDialog(QDialog):
     # Compact combo style scoped to the dialog so the global 14px-padding
     # QComboBox style doesn't overflow the table rows.
@@ -2185,6 +2306,28 @@ class ChannelMappingDialog(QDialog):
         }}
     """
 
+    _CHECKBOX_STYLE = f"""
+        QCheckBox {{
+            background: transparent;
+            spacing: 0px;
+        }}
+        QCheckBox::indicator {{
+            width: 18px;
+            height: 18px;
+            border: 1px solid {COLORS['border']};
+            border-radius: 5px;
+            background-color: {COLORS['card_inset']};
+        }}
+        QCheckBox::indicator:hover {{
+            border-color: {COLORS['highlight']};
+        }}
+        QCheckBox::indicator:checked {{
+            background-color: {COLORS['accent']};
+            border-color: {COLORS['accent']};
+            image: none;
+        }}
+    """
+
     def __init__(self, parent, tx_files, channel_labels, tx_profile):
         super().__init__(parent)
         self.setWindowTitle("Clock Drift Correction Mapping")
@@ -2203,13 +2346,18 @@ class ChannelMappingDialog(QDialog):
         title.setStyleSheet(f"font-size: 17px; font-weight: 600; color: {COLORS['text']}; background: transparent;")
         layout.addWidget(title)
 
-        subtitle = QLabel("These channels are used only for offset correction after TC matching. Set rows to 'No correction' when there is no clean reference.")
+        subtitle = QLabel(
+            "Reference channel is used for clock-drift alignment. The same name also decides "
+            "whether the TX gets pulled into a given take — if the channel isn't recorded in "
+            "that take, the TX is skipped. Tick 'Always include' for autonomous plant mics on "
+            "channels that don't physically exist on the recorder."
+        )
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet(f"font-size: 12px; color: {COLORS['text_secondary']}; background: transparent;")
         layout.addWidget(subtitle)
 
-        self.table = QTableWidget(len(tx_files), 3)
-        self.table.setHorizontalHeaderLabels(["TX file", "Detected name", "Recorder reference"])
+        self.table = QTableWidget(len(tx_files), 4)
+        self.table.setHorizontalHeaderLabels(["TX file", "Detected name", "Recorder reference", "Always include"])
         self.table.verticalHeader().setVisible(False)
         self.table.verticalHeader().setDefaultSectionSize(44)
         self.table.setSelectionMode(QTableWidget.NoSelection)
@@ -2238,17 +2386,20 @@ class ChannelMappingDialog(QDialog):
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.Fixed)
-        # Pick a column width that fits "8: <longest-channel-name>" comfortably.
+        header.setSectionResizeMode(3, QHeaderView.Fixed)
+        # Width for the reference-channel column fits "8: <longest-name>" comfortably.
         longest_label = max((len(lbl) for lbl in channel_labels), default=8)
         header.resizeSection(2, max(220, 18 + 9 * (longest_label + 4)))
+        header.resizeSection(3, 130)
 
-        self._combos = []
+        self._rows = []
         for row, tx_file in enumerate(tx_files):
             track = get_tx_info(os.path.splitext(tx_file)[0], tx_profile)["name"]
             self.table.setItem(row, 0, QTableWidgetItem(tx_file))
             self.table.setItem(row, 1, QTableWidgetItem(track))
             self.table.setRowHeight(row, 44)
 
+            # ── Reference channel combo ─────────────────────────
             cell = QWidget()
             cell_layout = QHBoxLayout(cell)
             cell_layout.setContentsMargins(8, 6, 8, 6)
@@ -2266,7 +2417,19 @@ class ChannelMappingDialog(QDialog):
             combo.setCurrentIndex(guess if guess else 0)
             cell_layout.addWidget(combo, 1)
             self.table.setCellWidget(row, 2, cell)
-            self._combos.append((tx_file, combo))
+
+            # ── Always-include checkbox ─────────────────────────
+            check_cell = QWidget()
+            check_layout = QHBoxLayout(check_cell)
+            check_layout.setContentsMargins(0, 0, 0, 0)
+            check_layout.setSpacing(0)
+            check_layout.setAlignment(Qt.AlignCenter)
+            checkbox = QCheckBox()
+            checkbox.setStyleSheet(self._CHECKBOX_STYLE)
+            check_layout.addWidget(checkbox)
+            self.table.setCellWidget(row, 3, check_cell)
+
+            self._rows.append((tx_file, combo, checkbox))
         layout.addWidget(self.table, 1)
 
         buttons = QHBoxLayout()
@@ -2305,13 +2468,26 @@ class ChannelMappingDialog(QDialog):
         layout.addLayout(buttons)
 
     def mapping(self):
-        result = {}
-        for tx_file, combo in self._combos:
+        """Return (align_map, always_include).
+
+        align_map      — {tx_filename: channel_name_str} for clock-drift alignment.
+        always_include — set of tx_filenames that bypass the per-recorder
+                         channel-presence filter (autonomous plant mics etc.)
+        Both dicts/sets include the filename with AND without extension so
+        lookups work regardless of which form the caller uses.
+        """
+        align_map = {}
+        always_include = set()
+        for tx_file, combo, checkbox in self._rows:
             channel = combo.currentData()
+            base = os.path.splitext(tx_file)[0]
             if channel:
-                result[tx_file] = str(channel)
-                result[os.path.splitext(tx_file)[0]] = str(channel)
-        return result
+                align_map[tx_file] = str(channel)
+                align_map[base] = str(channel)
+            if checkbox.isChecked():
+                always_include.add(tx_file)
+                always_include.add(base)
+        return align_map, always_include
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -2421,6 +2597,12 @@ class MainWindow(QMainWindow):
         self.clock_correction_toggle.setChecked(True)
         cl.addWidget(self.clock_correction_toggle)
 
+        self.filter_by_channel_toggle = ToggleSwitch(
+            "Match TX to recorder tracks",
+            "Skip TX whose channel isn't recorded in this take (override per-TX in mapping)")
+        self.filter_by_channel_toggle.setChecked(True)
+        cl.addWidget(self.filter_by_channel_toggle)
+
         cl.addSpacing(4)
         self._sec(cl, "Progress")
         self.progress_bar = NeumorphicProgressBar()
@@ -2491,9 +2673,13 @@ class MainWindow(QMainWindow):
         # dropdowns needed.
         tx_profile = "Auto (detect by filename)"
 
-        # Show channel mapping dialog if clock correction is enabled
+        # Show channel mapping dialog if clock correction OR channel filter is on
         align_map = None
-        if self.clock_correction_toggle.isChecked():
+        always_include = None
+        filter_by_channel = self.filter_by_channel_toggle.isChecked()
+        show_dialog = self.clock_correction_toggle.isChecked() or filter_by_channel
+
+        if show_dialog:
             tx_dir = self.tx_sel.path()
             tx_files = sorted([f for f in os.listdir(tx_dir) if f.lower().endswith(".wav")])
 
@@ -2504,9 +2690,11 @@ class MainWindow(QMainWindow):
                         self, tx_files, rec_channels, tx_profile
                     )
                     if dialog.exec() == QDialog.Accepted:
-                        align_map = dialog.mapping()
+                        align_map, always_include = dialog.mapping()
                         if align_map:
                             self._log(f"Channel mapping configured: {len(align_map)//2} files", "dim")
+                        if always_include:
+                            self._log(f"Always-include override: {len(always_include)//2} files", "dim")
                     else:
                         self._log("Processing cancelled", "dim")
                         return
@@ -2518,13 +2706,15 @@ class MainWindow(QMainWindow):
         self.start_btn.setDanger(True)
 
         self._worker = ProcessWorker(
-            r_dir      = self.recorder_sel.path(),
-            tx_dir     = self.tx_sel.path(),
-            o_dir      = self.output_sel.path(),
-            normalize  = self.convert_toggle.isChecked(),
-            tx_only    = self.tx_only_toggle.isChecked(),
-            tx_profile = tx_profile,
-            align_map  = align_map,
+            r_dir             = self.recorder_sel.path(),
+            tx_dir            = self.tx_sel.path(),
+            o_dir             = self.output_sel.path(),
+            normalize         = self.convert_toggle.isChecked(),
+            tx_only           = self.tx_only_toggle.isChecked(),
+            tx_profile        = tx_profile,
+            align_map         = align_map,
+            filter_by_channel = filter_by_channel,
+            always_include    = always_include,
         )
         self._worker.signals.log.connect(self._log)
         self._worker.signals.progress.connect(self._on_progress)
