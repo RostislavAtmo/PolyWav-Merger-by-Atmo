@@ -7,8 +7,8 @@ Unicode true
 
 !define APP_NAME           "PolyWav Merger"
 !define APP_EXE            "polywav_merger.exe"
-!define APP_VERSION        "2.5.0"
-!define APP_VERSION_LABEL  "Beta 2.5"
+!define APP_VERSION        "3.0.0"
+!define APP_VERSION_LABEL  "Beta 3.0"
 !define APP_PUBLISHER      "Atmo"
 !define APP_URL            "https://atmo.studio"
 !define APP_REGKEY         "Software\Microsoft\Windows\CurrentVersion\Uninstall\PolyWav Merger"
@@ -24,7 +24,7 @@ SetCompressor /SOLID lzma
 ShowInstDetails nevershow
 ShowUninstDetails nevershow
 
-VIProductVersion "2.5.0.0"
+VIProductVersion "3.0.0.0"
 VIAddVersionKey "ProductName"      "${APP_NAME}"
 VIAddVersionKey "ProductVersion"   "${APP_VERSION_LABEL}"
 VIAddVersionKey "FileVersion"      "${APP_VERSION}"
