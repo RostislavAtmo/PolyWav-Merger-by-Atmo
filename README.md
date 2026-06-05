@@ -84,19 +84,19 @@ typically takes 10–15 minutes.
 ### Installation
 
 **Windows** — Download the installer from the
-[Releases page](https://github.com/rostiks003-a11y/polywav-merger/releases),
+[Releases page](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases),
 or grab the standalone `.exe`.
 
 **macOS** — Download the universal `.dmg` (Apple Silicon or Intel) from
-the [Releases page](https://github.com/rostiks003-a11y/polywav-merger/releases).
+the [Releases page](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases).
 On first launch: right-click the app → Open → confirm
 (this works around Gatekeeper since the app is not notarized yet).
 
 ### Build from source
 
 ```bash
-git clone https://github.com/rostiks003-a11y/polywav-merger.git
-cd polywav-merger
+git clone https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo.git
+cd PolyWav-Merger-by-Atmo
 pip install -r requirements.txt
 python polywav_merger.py
 ```
@@ -109,7 +109,7 @@ or inside a `ffmpeg_bin/` subfolder.
 
 This is an early beta. Bug reports, feature suggestions, and workflow
 notes from working location sound mixers are exactly what the project
-needs. Open an [issue](https://github.com/rostiks003-a11y/polywav-merger/issues)
+needs. Open an [issue](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/issues)
 or reach out directly.
 
 The program is and always will be free. If it has helped you out,
@@ -185,19 +185,19 @@ polywav файлы тех TX, чьих каналов нет в треклист
 ### Установка
 
 **Windows** — скачайте установщик со страницы
-[Releases](https://github.com/rostiks003-a11y/polywav-merger/releases),
+[Releases](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases),
 или возьмите standalone `.exe`.
 
 **macOS** — скачайте универсальный `.dmg` (Apple Silicon или Intel)
-со страницы [Releases](https://github.com/rostiks003-a11y/polywav-merger/releases).
+со страницы [Releases](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases).
 При первом запуске: правый клик по приложению → Открыть → подтвердить
 (обход Gatekeeper, так как приложение пока не нотаризовано).
 
 ### Сборка из исходников
 
 ```bash
-git clone https://github.com/rostiks003-a11y/polywav-merger.git
-cd polywav-merger
+git clone https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo.git
+cd PolyWav-Merger-by-Atmo
 pip install -r requirements.txt
 python polywav_merger.py
 ```
@@ -210,7 +210,7 @@ python polywav_merger.py
 
 Сейчас это ранняя beta-версия. Баг-репорты, идеи новых функций и
 заметки от практикующих звукорежиссёров — именно то, что нужно проекту.
-Создавайте [issue](https://github.com/rostiks003-a11y/polywav-merger/issues)
+Создавайте [issue](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/issues)
 или пишите напрямую.
 
 Программа полностью бесплатная и всегда такой останется. Если она вам
