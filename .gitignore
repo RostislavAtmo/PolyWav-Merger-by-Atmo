@@ -1,11 +1,13 @@
 # Build outputs / temp
 dist/
 dist_merged/
+build/
 build_tmp/
 build_tmp_merged/
 __pycache__/
 *.pyc
 *.pyo
+*.spec.bak
 
 # Large binaries that exceed GitHub's 100 MB per-file limit.
 # - ffmpeg.exe (Windows): ~200 MB. Local-only; Win build script picks it up.
