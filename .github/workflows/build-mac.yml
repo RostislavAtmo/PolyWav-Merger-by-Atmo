@@ -20,13 +20,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14 = Apple Silicon (arm64), macos-13 = Intel (x86_64)
-        # Build both so you can ship a fat artifact for each architecture.
+        # macos-14 = Apple Silicon (arm64). Intel (x86_64) builds are
+        # currently disabled — the resulting binary did not launch cleanly
+        # on Intel Macs in previous attempts.
         include:
           - runner: macos-14
             arch: arm64
-          - runner: macos-13
-            arch: x86_64
     runs-on: ${{ matrix.runner }}
 
     env:
