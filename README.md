@@ -4,9 +4,7 @@
 
 # PolyWav Merger
 
-**Automatic merging of wireless TX backup recordings with main recorder takes
-into polywav files — with clock-drift correction and full BWF/iXML metadata
-preservation.**
+**Merge recorder takes with wireless TX backups into clean polywav files — with clock-drift correction, BWF/iXML metadata preservation, and a built-in library browser.**
 
 ![Version](https://img.shields.io/badge/version-4.0.1--beta-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)
@@ -21,76 +19,60 @@ preservation.**
 
 ## English
 
-### What it does
+### Overview
 
-PolyWav Merger streamlines the workflow between wireless recording systems
-and post-production. It saves hours of work — both on set and after.
+PolyWav Merger is a desktop app for location sound workflows. It matches recorder polywav takes with long TX backup files by timecode, corrects clock drift, and outputs ready-to-edit polywav files with metadata intact.
 
-Modern wireless systems already record very high-quality audio directly on
-the transmitter: 32-bit recording, built-in timecode, mature ecosystems.
-But we're still bound by the limits of the RF chain — dynamic range of the
-codec, transmission range, compression, and the inherent unpredictability
-of RF transmission.
+The app has two main areas:
 
-The cleanest, most stable audio is often already sitting on the transmitter
-itself. PolyWav Merger makes it practical to actually use it.
+- **Merge** — batch conversion from recorder + TX folders to polywav
+- **Library** — browse a folder of WAV files, inspect BWF/iXML metadata, play multichannel waveforms, edit notes, and trim clips
 
-### How it works
+### Core merge workflow
 
-1. Reads poly files from the recorder and parses BWF/iXML metadata
-   (works with any recorder — Sound Devices, Zoom, Zaxcom, Tentacle,
-   Cantar, etc.)
-2. Analyzes backup files from the transmitters and finds matches by
-   timecode intersection (`time_ref` from the bext chunk)
-3. Cuts the matching segment out of the long TX file, equal in length
-   to the recorder take
-4. Corrects clock drift between recorder and TX using FFT cross-correlation
-   (GPU-accelerated via CUDA/ROCm if available, CPU fallback otherwise).
-   Lag search of ±1.5 seconds, with a boom fallback if the primary channel
-   doesn't align
-5. Normalizes the TX segment to −1 dBFS if it exceeds the threshold,
-   to avoid digital clipping during conversion
-6. Converts from 32-bit to 24-bit
-7. Builds the polywav: recorder tracks keep their original order, TX
-   tracks are sorted (boom always on top, then by channel index inferred
-   from the filename)
-8. All metadata from the original recorder file is automatically carried
-   over into the final polywav
+1. Read poly files from the recorder and parse BWF/iXML metadata (Sound Devices, Zoom, Zaxcom, Tentacle, Cantar, and others)
+2. Match TX backup files by timecode intersection (`time_ref` from the bext chunk)
+3. Cut the matching TX segment to the recorder take length
+4. Correct clock drift with FFT cross-correlation (CUDA/ROCm when available, CPU fallback). Search window ±1.5 s, with boom fallback
+5. Normalize TX to −1 dBFS when needed to avoid clipping
+6. Convert 32-bit TX audio to 24-bit
+7. Build the final polywav: recorder tracks keep their order, TX tracks are sorted (boom first, then by channel index from filename)
+8. Carry over metadata from the original recorder file
 
-### Extra workflow features
+### Library & playback
 
-**Smart per-scene TX filtering.** If a take didn't involve every cast
-member, the program automatically skips the TX files whose channels aren't
-in that take's tracklist. Transmitters running on autonomous channels —
-plant mics, ambience setups, anything that should travel across all
-takes — can be flagged as "always include" and they'll end up in every
-polywav regardless of the tracklist.
+- File table with scene, take, timecode, length, and sample rate
+- Metadata panels: General Info, Recording Info, Track Info, Notes
+- Multichannel waveform viewer with solo/mute, pan, volume, zoom, trim, and note saving
+- Dark/light themes with selectable accent colors (including neutral Mono)
 
-**Recorder-tracks-off mode.** When generating the polywav, you can
-disable the inclusion of recorder tracks in the final file and keep only
-the TX tracks — effectively replacing recorder tracks with TX tracks.
-In that mode the recorder becomes the monitoring hub, the place where
-the overall session is logged, and the source of metadata, while the
-transmitters become the primary audio source — insulated from all
-the limitations of RF transmission.
+### Extra merge options
 
-### Speed
+- **Per-scene TX filtering** — skip TX channels not present in a take's tracklist; mark channels as "always include" for plant/ambience mics
+- **Recorder-tracks-off mode** — output TX tracks only, using the recorder file as the metadata source
 
-100 recorder files convert in roughly 5 minutes on an SSD.
-For offloading from the transmitters, a high-bandwidth USB hub is
-recommended. The entire process — from offload to finished conversion —
-typically takes 10–15 minutes.
+### Performance
 
-### Installation
+About 100 recorder files in ~5 minutes on an SSD. Full offload-to-conversion workflow is typically 10–15 minutes with a fast USB hub for TX downloads.
 
-**Windows** — Download the installer from the
-[Releases page](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases),
-or grab the standalone `.exe`.
+### Download (Beta 4.0.1)
 
-**macOS** — Download the universal `.dmg` (Apple Silicon or Intel) from
-the [Releases page](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases).
-On first launch: right-click the app → Open → confirm
-(this works around Gatekeeper since the app is not notarized yet).
+**Windows**
+
+| File | Description |
+|---|---|
+| `PolyWav_Merger_Setup_4.0.1-beta.exe` | Installer (recommended) |
+| `polywav_merger.exe` | Portable single-file build |
+
+Download from [Releases](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases/tag/v4.0.1-beta).
+
+The Windows build bundles **ffmpeg**, **sounddevice** (PortAudio), **soundfile**, and all Python/Qt dependencies. No separate FFmpeg install is required.
+
+**macOS**
+
+Download the `.dmg` for Apple Silicon from [Releases](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases).
+
+On first launch: right-click the app → **Open** → confirm (Gatekeeper workaround; the app is not notarized yet).
 
 ### Build from source
 
@@ -101,19 +83,26 @@ pip install -r requirements.txt
 python polywav_merger.py
 ```
 
-A static FFmpeg binary is required at runtime — place `ffmpeg.exe`
-(Windows) or `ffmpeg` (macOS/Linux) next to `polywav_merger.py`,
-or inside a `ffmpeg_bin/` subfolder.
+For local development, place a static FFmpeg binary next to `polywav_merger.py` or in `ffmpeg_bin/`:
 
-### Feedback & support
+- Windows: `ffmpeg.exe`
+- macOS/Linux: `ffmpeg`
 
-This is an early beta. Bug reports, feature suggestions, and workflow
-notes from working location sound mixers are exactly what the project
-needs. Open an [issue](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/issues)
-or reach out directly.
+Release builds include FFmpeg automatically.
 
-The program is and always will be free. If it has helped you out,
-supporting development goes a long way:
+### System requirements
+
+- **Windows:** 10/11 x64
+- **macOS:** 11.0+, Apple Silicon (arm64)
+- SSD recommended for large batches
+
+### Feedback
+
+This is a beta. Bug reports and workflow feedback from working mixers are welcome:
+
+- [Issues](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/issues)
+
+The app is free. If it helps your workflow:
 
 - [Patreon](https://patreon.com/atmo_sound)
 - [Boosty](https://boosty.to/atmo.prod)
@@ -122,76 +111,60 @@ supporting development goes a long way:
 
 ## Русский
 
-### Что делает программа
+### Обзор
 
-PolyWav Merger упрощает интеграцию аудиоисходников с радиосистем
-в постпродакшен. Программа экономит часы работы на съёмочной площадке
-и после неё.
+PolyWav Merger — десктопное приложение для location sound. Оно сопоставляет polywav-дубли с рекордера с длинными TX backup-файлами по таймкоду, корректирует clock drift и выдаёт готовые polywav с сохранёнными метаданными.
 
-Современные радиосистемы уже умеют очень качественно писать звук прямо
-на передатчик: 32-bit запись, встроенный таймкод, удобная экосистема
-и эргономика. Но при этом мы по-прежнему зависим от ограничений
-радиотракта — ширины динамического диапазона, дальности действия,
-кодека и нестабильности RF-среды.
+В приложении два основных раздела:
 
-Самый чистый и стабильный звук часто уже лежит на самом передатчике.
-PolyWav Merger делает работу с этими записями удобной.
+- **Merge** — пакетная конвертация из папок рекордера и TX в polywav
+- **Library** — просмотр папки с WAV, метаданные BWF/iXML, многоканальное воспроизведение, заметки и trim
 
-### Как это работает
+### Основной merge-процесс
 
-1. Читает poly-файлы с рекордера и парсит BWF/iXML метаданные
-   (поддерживается любой рекордер — SD, Zoom, Zaxcom, Tentacle,
-   Cantar и т.д.)
-2. Анализирует backup-файлы с передатчиков и ищет совпадения
-   по пересечению таймкода (`time_ref` из bext-чанка)
-3. Вырезает из длинного TX-файла участок, равный длине дубля на рекордере
-4. Корректирует clock drift между рекордером и TX через FFT
-   кросс-корреляцию (GPU-ускорение через CUDA/ROCm если есть,
-   fallback на CPU). Поиск лага ±1.5 секунды, есть boom fallback,
-   если primary канал не сошёлся
-5. Нормализует TX до −1 dBFS, если есть превышение порога,
-   чтобы избежать цифрового клиппинга
-6. Конвертирует из 32 в 24 бит
-7. Собирает polywav: дорожки рекордера сохраняют исходный порядок,
-   дорожки передатчиков сортируются (бум всегда сверху, дальше
-   по индексу канала из имени файла)
-8. Все метаданные оригинального файла рекордера автоматически
-   переносятся в готовый polywav
+1. Читает poly-файлы с рекордера и парсит BWF/iXML (SD, Zoom, Zaxcom, Tentacle, Cantar и др.)
+2. Находит совпадения с TX backup по пересечению таймкода (`time_ref` из bext)
+3. Вырезает из TX участок длиной в дубль рекордера
+4. Корректирует clock drift через FFT кросс-корреляцию (CUDA/ROCm при наличии, иначе CPU). Окно поиска ±1.5 с, есть boom fallback
+5. Нормализует TX до −1 dBFS при превышении порога
+6. Конвертирует 32-bit TX в 24-bit
+7. Собирает polywav: дорожки рекордера в исходном порядке, TX сортируются (бум сверху, далее по индексу канала из имени файла)
+8. Переносит метаданные из файла рекордера
 
-### Дополнительные функции
+### Library и воспроизведение
 
-**Умная фильтрация передатчиков по составу сцены.** Если в дубле
-участвовали не все актёры, программа автоматически не включит в
-polywav файлы тех TX, чьих каналов нет в треклисте этого дубля.
-Передатчики, которые работают на автономных каналах (plant-микрофоны,
-системы записи окружения), можно отдельно отметить как «всегда
-включать» — они будут попадать во все дубли независимо от треклиста.
+- Таблица файлов: scene, take, timecode, длина, sample rate
+- Панели метаданных: General Info, Recording Info, Track Info, Notes
+- Многоканальный waveform viewer: solo/mute, pan, volume, zoom, trim, сохранение заметок
+- Тёмная/светлая тема с выбором акцентного цвета (включая нейтральный Mono)
 
-**Режим без дорожек рекордера.** При генерации polywav можно отключить
-включение дорожек рекордера в конечный файл, оставив только дорожки
-с передатчиков — как будто заменяя дорожки рекордера на дорожки из TX.
-В этом режиме рекордер остаётся центром мониторинга, местом записи
-общей сессии и источником метаданных, а сами передатчики становятся
-основным источником звука — мы застрахованы от всех ограничений
-радиопередачи.
+### Дополнительные опции merge
 
-### О скорости
+- **Фильтрация TX по сцене** — пропуск TX-каналов, которых нет в треклисте дубля; режим «всегда включать» для plant/ambience
+- **Режим без дорожек рекордера** — в итоговом файле только TX, метаданные берутся с рекордера
 
-100 файлов с рекордера конвертируются примерно за 5 минут при работе
-с SSD. Для слива файлов с передатчиков рекомендуется USB-хаб с высокой
-пропускной способностью. Весь процесс — от слива данных с передатчиков
-до конца конвертации — обычно занимает 10–15 минут.
+### Скорость
 
-### Установка
+Около 100 файлов с рекордера за ~5 минут на SSD. Полный цикл от слива TX до готовых polywav обычно 10–15 минут при быстром USB-хабе.
 
-**Windows** — скачайте установщик со страницы
-[Releases](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases),
-или возьмите standalone `.exe`.
+### Скачать (Beta 4.0.1)
 
-**macOS** — скачайте универсальный `.dmg` (Apple Silicon или Intel)
-со страницы [Releases](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases).
-При первом запуске: правый клик по приложению → Открыть → подтвердить
-(обход Gatekeeper, так как приложение пока не нотаризовано).
+**Windows**
+
+| Файл | Описание |
+|---|---|
+| `PolyWav_Merger_Setup_4.0.1-beta.exe` | Установщик (рекомендуется) |
+| `polywav_merger.exe` | Portable single-file сборка |
+
+Скачать: [Releases](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases/tag/v4.0.1-beta).
+
+Windows-сборка включает **ffmpeg**, **sounddevice** (PortAudio), **soundfile** и все зависимости Python/Qt. Отдельно ставить FFmpeg не нужно.
+
+**macOS**
+
+Скачайте `.dmg` для Apple Silicon на странице [Releases](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/releases).
+
+При первом запуске: правый клик по приложению → **Открыть** → подтвердить (обход Gatekeeper; приложение пока не нотаризовано).
 
 ### Сборка из исходников
 
@@ -202,19 +175,26 @@ pip install -r requirements.txt
 python polywav_merger.py
 ```
 
-Для работы требуется статический FFmpeg — положите `ffmpeg.exe`
-(Windows) или `ffmpeg` (macOS/Linux) рядом с `polywav_merger.py`,
-либо в подпапку `ffmpeg_bin/`.
+Для локальной разработки положите статический FFmpeg рядом с `polywav_merger.py` или в `ffmpeg_bin/`:
 
-### Обратная связь и поддержка
+- Windows: `ffmpeg.exe`
+- macOS/Linux: `ffmpeg`
 
-Сейчас это ранняя beta-версия. Баг-репорты, идеи новых функций и
-заметки от практикующих звукорежиссёров — именно то, что нужно проекту.
-Создавайте [issue](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/issues)
-или пишите напрямую.
+В релизных сборках FFmpeg уже включён.
 
-Программа полностью бесплатная и всегда такой останется. Если она вам
-помогла — ваша поддержка очень поможет в развитии:
+### Системные требования
+
+- **Windows:** 10/11 x64
+- **macOS:** 11.0+, Apple Silicon (arm64)
+- Для больших пакетов рекомендуется SSD
+
+### Обратная связь
+
+Сейчас это beta. Баг-репорты и замечания от практикующих звукорежиссёров приветствуются:
+
+- [Issues](https://github.com/RostislavAtmo/PolyWav-Merger-by-Atmo/issues)
+
+Программа бесплатная. Если она помогла в работе:
 
 - [Patreon](https://patreon.com/atmo_sound)
 - [Boosty](https://boosty.to/atmo.prod)
@@ -223,6 +203,6 @@ python polywav_merger.py
 
 <div align="center">
 
-**PolyWav Merger** © Atmo — Released under the MIT License
+**PolyWav Merger** © Atmo — MIT License
 
 </div>
