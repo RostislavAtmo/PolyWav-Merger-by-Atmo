@@ -8,7 +8,7 @@
 into polywav files — with clock-drift correction and full BWF/iXML metadata
 preservation.**
 
-![Version](https://img.shields.io/badge/version-3.0.0--beta-blue)
+![Version](https://img.shields.io/badge/version-4.0.1--beta-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-beta-orange)
