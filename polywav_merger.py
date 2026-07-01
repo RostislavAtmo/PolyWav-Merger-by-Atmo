@@ -1,7 +1,7 @@
 """
 PolyWav Merger 4.0.1-beta
-Recorder + TX Conform Tool
-Modern neumorphic UI — PySide6
+Recorder + TX conform tool with Library browser and waveform playback.
+PySide6 desktop app.
 """
 
 import sys

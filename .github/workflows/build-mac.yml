@@ -118,10 +118,11 @@ jobs:
           path: PolyWav_Merger_${{ env.APP_VERSION }}_${{ matrix.arch }}.dmg
           if-no-files-found: error
 
-      - name: Attach .dmg to GitHub Release (only on tag push)
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Attach .dmg to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v4.0.1-beta
           files: PolyWav_Merger_${{ env.APP_VERSION }}_${{ matrix.arch }}.dmg
           draft: false
           prerelease: true

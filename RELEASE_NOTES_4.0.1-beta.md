@@ -7,6 +7,12 @@
 | `PolyWav_Merger_Setup_4.0.1-beta.exe` | Installer (recommended) |
 | `polywav_merger.exe` | Portable build |
 
+## macOS download
+
+| File | Description |
+|---|---|
+| `PolyWav_Merger_4.0.1-beta_arm64.dmg` | Apple Silicon (arm64) installer |
+
 ## What's in this release
 
 - Beta 4.0.1 build for Windows x64
@@ -19,7 +25,8 @@
 ## Requirements
 
 - Windows 10/11 x64
+- macOS 11.0+, Apple Silicon (arm64)
 
-## macOS
+## macOS note
 
-macOS builds are published separately from the GitHub Actions workflow when available.
+macOS builds are published from the GitHub Actions workflow when available.
